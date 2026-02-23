@@ -312,23 +312,49 @@ with tab_recipes:
         else:
             for _, row in all_recipes.iterrows():
                 with st.expander(f"📦 {row['name']} ({row['calories']:.0f} cal)"):
-                    st.write(f"**Macros:** {row['protein']:.1f}g P | {row['fat']:.1f}g F | {row['carbs']:.1f}g C")
+                    st.write(f"**Base Macros:** {row['protein']:.1f}g P | {row['fat']:.1f}g F | {row['carbs']:.1f}g C")
                     
                     # Convert the JSON string back to DataFrame for display
                     if 'ingredients_json' in row:
                         ing_df = pd.read_json(row['ingredients_json'], orient='records')
-                        st.dataframe(ing_df[['food_name', 'calories']], use_container_width=True)
                         
-                    # Button to log this recipe TODAY
-                    if st.button(f"Log '{row['name']}' Today", key=f"log_{row['name']}"):
-                        # Construct a single row df for the recipe
-                        recipe_log = pd.DataFrame([{
-                            'food_name': f"Recipe: {row['name']}",
-                            'calories': row['calories'],
-                            'protein': row['protein'],
-                            'fat': row['fat'],
-                            'carbs': row['carbs'],
-                            'fiber': row['fiber']
-                        }])
-                        db.save_logs(recipe_log, date.today())
-                        st.success(f"Logged 1 serving of '{row['name']}' to today's log!")
+                        # Make the dataframe editable so users can tweak individual amounts
+                        st.write("Tune ingredients for this specific meal:")
+                        edited_ing_df = st.data_editor(ing_df, key=f"editor_{row['name']}", use_container_width=True)
+                        
+                        # Calculate the new base totals from the edited dataframe
+                        new_base_totals = calculate_totals(edited_ing_df)
+                        
+                        # Add a global portion multiplier
+                        portion = st.number_input(
+                            f"Portion Multiplier for '{row['name']}'", 
+                            min_value=0.1, 
+                            value=1.0, 
+                            step=0.1, 
+                            key=f"portion_{row['name']}"
+                        )
+                        
+                        # Display what the final logged amounts will be
+                        final_cal = new_base_totals['calories'] * portion
+                        st.caption(f"**Logging:** {final_cal:.0f} cal | " 
+                                   f"{new_base_totals['protein'] * portion:.1f}g P | "
+                                   f"{new_base_totals['fat'] * portion:.1f}g F | "
+                                   f"{new_base_totals['carbs'] * portion:.1f}g C")
+                        
+                        # Button to log this recipe TODAY
+                        if st.button(f"Log '{row['name']}' Today", key=f"log_{row['name']}"):
+                            # Construct a single row df for the recipe, applying the multiplier
+                            recipe_name = f"Recipe: {row['name']}"
+                            if portion != 1.0:
+                                recipe_name += f" ({portion}x portion)"
+                                
+                            recipe_log = pd.DataFrame([{
+                                'food_name': recipe_name,
+                                'calories': final_cal,
+                                'protein': new_base_totals['protein'] * portion,
+                                'fat': new_base_totals['fat'] * portion,
+                                'carbs': new_base_totals['carbs'] * portion,
+                                'fiber': new_base_totals['fiber'] * portion
+                            }])
+                            db.save_logs(recipe_log, date.today())
+                            st.success(f"Logged '{recipe_name}' to today's log!")
