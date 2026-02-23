@@ -288,6 +288,10 @@ with tab_history:
         for log_date, group_df in grouped:
             st.subheader(f"{log_date}")
             
+            # Calculate and display daily totals
+            day_totals = calculate_totals(group_df)
+            st.caption(f"**Total:** {day_totals['calories']:.0f} kcal 🫘 {day_totals['protein']:.1f}g P 🧈 {day_totals['fat']:.1f}g F 🍞 {day_totals['carbs']:.1f}g C 🥦 {day_totals['fiber']:.1f}g Fiber")
+            
             # Prepare dataframe for display
             display_df = group_df.copy()
             
