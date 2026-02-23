@@ -171,63 +171,52 @@ with tab_dash:
             row_heights=[0.8, 0.2]
         )
 
-        # 1. Protein (Stacked Area - Pink)
+        # 1. Protein (Stacked Area - Teal) #028391
         fig.add_trace(
             go.Scatter(x=daily_summary['date'], y=p_cal, 
-                       name="Protein", mode='lines', stackgroup='one',
-                       fillcolor='#FF1493', line=dict(color='#FF1493', width=2),
+                       name="Protein", mode='lines', stackgroup='one', line_shape='spline',
+                       fillcolor='#028391', line=dict(color='#028391', width=2),
                        customdata=daily_summary['protein'],
                        hovertemplate='Protein: %{customdata:.1f}g (~%{y:.0f} kcal)<extra></extra>'),
             row=1, col=1
         )
         
-        # 2. Fat (Stacked Area - Yellow)
+        # 2. Fat (Stacked Area - Cream) #F6DCAC
         fig.add_trace(
             go.Scatter(x=daily_summary['date'], y=f_cal, 
-                       name="Fat", mode='lines', stackgroup='one',
-                       fillcolor='#FFD700', line=dict(color='#FFD700', width=2),
+                       name="Fat", mode='lines', stackgroup='one', line_shape='spline',
+                       fillcolor='#F6DCAC', line=dict(color='#F6DCAC', width=2),
                        customdata=daily_summary['fat'],
                        hovertemplate='Fat: %{customdata:.1f}g (~%{y:.0f} kcal)<extra></extra>'),
             row=1, col=1
         )
         
-        # 3. Carbs (Stacked Area - Blue)
+        # 3. Carbs (Stacked Area - Peach) #FAA968
         fig.add_trace(
             go.Scatter(x=daily_summary['date'], y=c_cal, 
-                       name="Carbs", mode='lines', stackgroup='one',
-                       fillcolor='#00E5FF', line=dict(color='#00E5FF', width=2),
+                       name="Carbs", mode='lines', stackgroup='one', line_shape='spline',
+                       fillcolor='#FAA968', line=dict(color='#FAA968', width=2),
                        customdata=daily_summary['carbs'],
                        hovertemplate='Carbs: %{customdata:.1f}g (~%{y:.0f} kcal)<extra></extra>'),
             row=1, col=1
         )
 
-        # 4. Fiber - thin vertical lines going down (Bar chart on reversed inverted axis)
-        fig.add_trace(
-            go.Bar(x=daily_summary['date'], y=daily_summary['fiber'], 
-                   name="Fiber Drops", marker_color='#D35400',
-                   customdata=daily_summary['fiber'],
-                   hovertemplate='Fiber: %{customdata:.1f}g<extra></extra>',
-                   showlegend=False),
-            row=2, col=1
-        )
-        
-        # 5. Fiber - line joining the ends
+        # 4. Fiber - smoothed filled area chart descending #F85525
         fig.add_trace(
             go.Scatter(x=daily_summary['date'], y=daily_summary['fiber'], 
-                       name="Fiber", mode='lines+markers', 
-                       line=dict(color='#D35400', width=2),
+                       name="Fiber", mode='lines', fill='tozeroy', line_shape='spline',
+                       fillcolor='rgba(248, 85, 37, 0.4)', line=dict(color='#F85525', width=2),
                        customdata=daily_summary['fiber'],
                        hovertemplate='Fiber: %{customdata:.1f}g<extra></extra>'),
             row=2, col=1
         )
 
-        # Configure layout
+        # Configure layout (Shrunk height, Legend at bottom)
         fig.update_layout(
-            height=600,
+            height=400,
             hovermode='x unified',
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-            bargap=0.9, # Makes the fiber bars very thin
-            margin=dict(t=50, b=50)
+            legend=dict(orientation="h", yanchor="top", y=-0.15, xanchor="center", x=0.5),
+            margin=dict(t=20, b=50) # Tighter top margin, room for legend at bottom
         )
         
         # Calculate viewport for zoom
@@ -239,7 +228,7 @@ with tab_dash:
         
         # X-axes line styling
         fig.update_xaxes(showline=True, linewidth=1, linecolor='gray', showticklabels=False, row=1, col=1)
-        fig.update_xaxes(showline=False, showticklabels=True, title_text="Date", row=2, col=1)
+        fig.update_xaxes(showline=False, showticklabels=True, row=2, col=1)
         
         # Y-axes setup
         fig.update_yaxes(title_text="KCal", rangemode="tozero", row=1, col=1)
