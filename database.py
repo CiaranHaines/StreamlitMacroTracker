@@ -1,12 +1,13 @@
 import pandas as pd
-from datetime import date
+from datetime import date, timedelta
 import streamlit as st
-from sqlalchemy import create_engine, text
+from supabase import create_client, Client
 
 @st.cache_resource
-def get_engine():
-    db_url = st.secrets["connections"]["supabase"]["url"]
-    return create_engine(db_url)
+def get_supabase() -> Client:
+    url = st.secrets["connections"]["supabase"]["SUPABASE_URL"]
+    key = st.secrets["connections"]["supabase"]["SUPABASE_KEY"]
+    return create_client(url, key)
 
 def init_db():
     # Tables are manually created in Supabase. The app user does not have CREATE permissions.
@@ -17,33 +18,37 @@ def save_logs(df: pd.DataFrame, log_date: date):
         return
         
     df = df.copy()
-    df['date'] = log_date
+    df['date'] = log_date.strftime('%Y-%m-%d')
+    records = df.to_dict(orient='records')
     
-    engine = get_engine()
-    df.to_sql('logs', engine, if_exists='append', index=False)
+    supabase = get_supabase()
+    supabase.table('logs').insert(records).execute()
 
 def get_logs_by_date(log_date: date) -> pd.DataFrame:
-    engine = get_engine()
-    query = text("SELECT * FROM logs WHERE date = :date")
-    return pd.read_sql_query(query, engine, params={'date': log_date})
+    supabase = get_supabase()
+    date_str = log_date.strftime('%Y-%m-%d')
+    response = supabase.table('logs').select("*").eq("date", date_str).execute()
+    return pd.DataFrame(response.data)
 
 def get_recent_logs(days: int = 30) -> pd.DataFrame:
-    engine = get_engine()
-    query = text("SELECT * FROM logs WHERE date >= CURRENT_DATE - (:days * INTERVAL '1 day')")
-    return pd.read_sql_query(query, engine, params={'days': days})
+    supabase = get_supabase()
+    cutoff_date = (date.today() - timedelta(days=days)).strftime('%Y-%m-%d')
+    response = supabase.table('logs').select("*").gte("date", cutoff_date).execute()
+    return pd.DataFrame(response.data)
 
 def load_all_logs() -> pd.DataFrame:
-    engine = get_engine()
-    return pd.read_sql_query(text("SELECT * FROM logs"), engine)
+    supabase = get_supabase()
+    # Note: Supabase REST limits to 1000 rows by default. For a massive scale app, 
+    # pagination would be needed, but this is fine for personal use.
+    response = supabase.table('logs').select("*").limit(10000).execute()
+    return pd.DataFrame(response.data)
 
 def delete_logs(log_ids: list):
     if not log_ids:
         return
-    engine = get_engine()
-    with engine.begin() as conn:
-        placeholders = ', '.join([f':id{i}' for i in range(len(log_ids))])
-        params = {f'id{i}': log_id for i, log_id in enumerate(log_ids)}
-        conn.execute(text(f"DELETE FROM logs WHERE id IN ({placeholders})"), params)
+    supabase = get_supabase()
+    # Supabase REST 'in_' filter takes a list
+    supabase.table('logs').delete().in_("id", log_ids).execute()
 
 def save_recipe(name: str, df: pd.DataFrame):
     if df.empty:
@@ -52,30 +57,21 @@ def save_recipe(name: str, df: pd.DataFrame):
     totals = df[['calories', 'protein', 'fat', 'carbs', 'fiber']].sum()
     ingredients_json = df.to_json(orient='records')
     
-    engine = get_engine()
-    with engine.begin() as conn:
-        conn.execute(text(
-            '''INSERT INTO recipes 
-               (name, ingredients_json, calories, protein, fat, carbs, fiber) 
-               VALUES (:name, :ingredients_json, :calories, :protein, :fat, :carbs, :fiber)
-               ON CONFLICT (name) DO UPDATE SET
-               ingredients_json = EXCLUDED.ingredients_json,
-               calories = EXCLUDED.calories,
-               protein = EXCLUDED.protein,
-               fat = EXCLUDED.fat,
-               carbs = EXCLUDED.carbs,
-               fiber = EXCLUDED.fiber
-            '''
-        ), {
-            'name': name,
-            'ingredients_json': ingredients_json,
-            'calories': totals['calories'],
-            'protein': totals['protein'],
-            'fat': totals['fat'],
-            'carbs': totals['carbs'],
-            'fiber': totals['fiber']
-        })
+    supabase = get_supabase()
+    record = {
+        'name': name,
+        'ingredients_json': ingredients_json,
+        'calories': totals['calories'],
+        'protein': totals['protein'],
+        'fat': totals['fat'],
+        'carbs': totals['carbs'],
+        'fiber': totals['fiber']
+    }
+    
+    # Supabase 'upsert' works on unique constraints (name is UNIQUE)
+    supabase.table('recipes').upsert(record).execute()
 
 def get_all_recipes() -> pd.DataFrame:
-    engine = get_engine()
-    return pd.read_sql_query(text("SELECT * FROM recipes"), engine)
+    supabase = get_supabase()
+    response = supabase.table('recipes').select("*").execute()
+    return pd.DataFrame(response.data)
