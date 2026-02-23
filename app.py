@@ -136,9 +136,9 @@ with tab_dash:
     
     col_dash1, col_dash2 = st.columns([1, 2])
     with col_dash1:
-        view_days = st.radio("Default Zoom Range:", [7, 30], index=0, horizontal=True)
+        view_days = st.radio("Default Zoom Range:", [7, 28], index=0, horizontal=True)
         
-    # Load 90 days to allow scrolling inside the 7 or 30 day zoom window
+    # Load 90 days to allow scrolling inside the zoom window
     recent_logs = db.get_recent_logs(90)
     
     if recent_logs.empty:
@@ -149,75 +149,102 @@ with tab_dash:
         
         st.subheader("Daily Intake Trends")
         
-        # Create figure with 5 vertically stacked subplots
+        # Calculate proportional heights of macros to match total calories
+        est_k = daily_summary['protein']*4 + daily_summary['fat']*9 + daily_summary['carbs']*4
+        # Avoid division by zero
+        est_k = est_k.replace(0, 1)
+
+        p_cal = daily_summary['calories'] * (daily_summary['protein']*4 / est_k)
+        f_cal = daily_summary['calories'] * (daily_summary['fat']*9 / est_k)
+        c_cal = daily_summary['calories'] * (daily_summary['carbs']*4 / est_k)
+        
+        # Ensure zero handling
+        p_cal = p_cal.fillna(0)
+        f_cal = f_cal.fillna(0)
+        c_cal = c_cal.fillna(0)
+        
+        # Create figure with 2 subplots separated by the X axis
         fig = make_subplots(
-            rows=5, cols=1, 
+            rows=2, cols=1, 
             shared_xaxes=True, 
-            vertical_spacing=0.04,
-            specs=[[{"type": "bar"}], [{"type": "scatter"}], [{"type": "scatter"}], [{"type": "scatter"}], [{"type": "scatter"}]]
+            vertical_spacing=0.0,
+            row_heights=[0.8, 0.2]
         )
 
-        # 1. Calories (Bar, ~95% width via bargap layout)
+        # 1. Protein (Stacked Area - Pink)
         fig.add_trace(
-            go.Bar(x=daily_summary['date'], y=daily_summary['calories'], name="Calories", marker_color='#636EFA'),
+            go.Scatter(x=daily_summary['date'], y=p_cal, 
+                       name="Protein", mode='lines', stackgroup='one',
+                       fillcolor='#FF1493', line=dict(color='#FF1493', width=2),
+                       customdata=daily_summary['protein'],
+                       hovertemplate='Protein: %{customdata:.1f}g (~%{y:.0f} kcal)<extra></extra>'),
             row=1, col=1
         )
         
-        # 2. Protein (Line)
+        # 2. Fat (Stacked Area - Yellow)
         fig.add_trace(
-            go.Scatter(x=daily_summary['date'], y=daily_summary['protein'], name="Protein (g)", 
-                       mode='lines+markers', line=dict(color='#EF553B', width=3)),
-            row=2, col=1
-        )
-        # 3. Fat (Line)
-        fig.add_trace(
-            go.Scatter(x=daily_summary['date'], y=daily_summary['fat'], name="Fat (g)", 
-                       mode='lines+markers', line=dict(color='#FECB52', width=3)),
-            row=3, col=1
-        )
-        # 4. Carbs (Line)
-        fig.add_trace(
-            go.Scatter(x=daily_summary['date'], y=daily_summary['carbs'], name="Carbs (g)", 
-                       mode='lines+markers', line=dict(color='#00CC96', width=3)),
-            row=4, col=1
-        )
-        # 5. Fiber (Line)
-        fig.add_trace(
-            go.Scatter(x=daily_summary['date'], y=daily_summary['fiber'], name="Fiber (g)", 
-                       mode='lines+markers', line=dict(color='#AB63FA', width=3)),
-            row=5, col=1
-        )
-
-        # Configure layout (Height, hover, legend, and narrow bar gap for 95% width)
-        fig.update_layout(
-            height=700,
-            hovermode='x unified',
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-            bargap=0.05, # Gives the bar chart 95% width
-            margin=dict(t=50) # Margin for the top axis ticks
+            go.Scatter(x=daily_summary['date'], y=f_cal, 
+                       name="Fat", mode='lines', stackgroup='one',
+                       fillcolor='#FFD700', line=dict(color='#FFD700', width=2),
+                       customdata=daily_summary['fat'],
+                       hovertemplate='Fat: %{customdata:.1f}g (~%{y:.0f} kcal)<extra></extra>'),
+            row=1, col=1
         )
         
-        # X-axes: Show ticks at top (row 1) and bottom (row 5) only
-        fig.update_xaxes(showticklabels=True, side="top", row=1, col=1)
-        fig.update_xaxes(showticklabels=False, row=2, col=1)
-        fig.update_xaxes(showticklabels=False, row=3, col=1)
-        fig.update_xaxes(showticklabels=False, row=4, col=1)
-        fig.update_xaxes(showticklabels=True, side="bottom", row=5, col=1)
+        # 3. Carbs (Stacked Area - Blue)
+        fig.add_trace(
+            go.Scatter(x=daily_summary['date'], y=c_cal, 
+                       name="Carbs", mode='lines', stackgroup='one',
+                       fillcolor='#00E5FF', line=dict(color='#00E5FF', width=2),
+                       customdata=daily_summary['carbs'],
+                       hovertemplate='Carbs: %{customdata:.1f}g (~%{y:.0f} kcal)<extra></extra>'),
+            row=1, col=1
+        )
+
+        # 4. Fiber - thin vertical lines going down (Bar chart on reversed inverted axis)
+        fig.add_trace(
+            go.Bar(x=daily_summary['date'], y=daily_summary['fiber'], 
+                   name="Fiber Drops", marker_color='#D35400',
+                   customdata=daily_summary['fiber'],
+                   hovertemplate='Fiber: %{customdata:.1f}g<extra></extra>',
+                   showlegend=False),
+            row=2, col=1
+        )
+        
+        # 5. Fiber - line joining the ends
+        fig.add_trace(
+            go.Scatter(x=daily_summary['date'], y=daily_summary['fiber'], 
+                       name="Fiber", mode='lines+markers', 
+                       line=dict(color='#D35400', width=2),
+                       customdata=daily_summary['fiber'],
+                       hovertemplate='Fiber: %{customdata:.1f}g<extra></extra>'),
+            row=2, col=1
+        )
+
+        # Configure layout
+        fig.update_layout(
+            height=600,
+            hovermode='x unified',
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+            bargap=0.9, # Makes the fiber bars very thin
+            margin=dict(t=50, b=50)
+        )
         
         # Calculate viewport for zoom
         latest_date = pd.to_datetime(daily_summary['date'].max())
         start_date = latest_date - pd.Timedelta(days=view_days - 1)
         
-        # Apply zoom to the shared x-axes (applying to row 5 cascades to the others)
+        # Apply zoom to the shared x-axes
         fig.update_xaxes(range=[start_date.strftime('%Y-%m-%d'), latest_date.strftime('%Y-%m-%d')])
         
-        # Y-axes: Force to zero and add subtle titles
-        fig.update_yaxes(rangemode="tozero", showline=True, linewidth=1, linecolor='gray')
-        fig.update_yaxes(title_text="KCal", title_font=dict(size=10), row=1, col=1)
-        fig.update_yaxes(title_text="Prot (g)", title_font=dict(size=10), row=2, col=1)
-        fig.update_yaxes(title_text="Fat (g)", title_font=dict(size=10), row=3, col=1)
-        fig.update_yaxes(title_text="Carbs (g)", title_font=dict(size=10), row=4, col=1)
-        fig.update_yaxes(title_text="Fiber (g)", title_font=dict(size=10), row=5, col=1)
+        # X-axes line styling
+        fig.update_xaxes(showline=True, linewidth=1, linecolor='gray', showticklabels=False, row=1, col=1)
+        fig.update_xaxes(showline=False, showticklabels=True, title_text="Date", row=2, col=1)
+        
+        # Y-axes setup
+        fig.update_yaxes(title_text="KCal", rangemode="tozero", row=1, col=1)
+        # Reverse the fiber axis so it hangs down from the shared X line
+        fig.update_yaxes(title_text="Fiber (g)", autorange="reversed", row=2, col=1)
 
         st.plotly_chart(fig, use_container_width=True)
         
