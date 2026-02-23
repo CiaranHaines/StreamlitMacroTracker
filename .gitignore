@@ -1,0 +1,5 @@
+.streamlit/
+macros.db
+__pycache__/
+*.pyc
+*.pyo
