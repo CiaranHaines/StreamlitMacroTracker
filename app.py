@@ -175,7 +175,7 @@ with tab_dash:
         fig.add_trace(
             go.Scatter(x=daily_summary['date'], y=p_cal, 
                        name="Protein", mode='lines', stackgroup='one', line_shape='spline',
-                       fillcolor='#F1A512', line=dict(color='#F1A512', width=2),
+                       fillcolor='rgba(241, 165, 18, 0.8)', line=dict(color='#F1A512', width=2),
                        customdata=daily_summary['protein'],
                        hovertemplate='Protein: %{customdata:.1f}g (~%{y:.0f} kcal)<extra></extra>'),
             row=1, col=1
@@ -185,7 +185,7 @@ with tab_dash:
         fig.add_trace(
             go.Scatter(x=daily_summary['date'], y=c_cal, 
                        name="Carbs", mode='lines', stackgroup='one', line_shape='spline',
-                       fillcolor='#DD4111', line=dict(color='#DD4111', width=2),
+                       fillcolor='rgba(221, 65, 17, 0.8)', line=dict(color='#DD4111', width=2),
                        customdata=daily_summary['carbs'],
                        hovertemplate='Carbs: %{customdata:.1f}g (~%{y:.0f} kcal)<extra></extra>'),
             row=1, col=1
@@ -195,7 +195,7 @@ with tab_dash:
         fig.add_trace(
             go.Scatter(x=daily_summary['date'], y=f_cal, 
                        name="Fat", mode='lines', stackgroup='one', line_shape='spline',
-                       fillcolor='#8C0027', line=dict(color='#8C0027', width=2),
+                       fillcolor='rgba(140, 0, 39, 0.8)', line=dict(color='#8C0027', width=2),
                        customdata=daily_summary['fat'],
                        hovertemplate='Fat: %{customdata:.1f}g (~%{y:.0f} kcal)<extra></extra>'),
             row=1, col=1
@@ -218,6 +218,12 @@ with tab_dash:
             legend=dict(orientation="h", yanchor="top", y=-0.15, xanchor="center", x=0.5),
             margin=dict(t=20, b=50) # Tighter top margin, room for legend at bottom
         )
+        
+        # Add vertical dashed lines for Mondays
+        daily_dt = pd.to_datetime(daily_summary['date'])
+        mondays = daily_dt[daily_dt.dt.dayofweek == 0]
+        for m in mondays:
+            fig.add_vline(x=m.strftime('%Y-%m-%d'), line_dash="dash", line_color="#A1D4B1", opacity=0.8, layer="below")
         
         # Calculate viewport for zoom
         latest_date = pd.to_datetime(daily_summary['date'].max())
@@ -284,6 +290,14 @@ with tab_history:
             
             # Prepare dataframe for display
             display_df = group_df.copy()
+            
+            # Format numbers before displaying
+            display_df['calories'] = display_df['calories'].round().astype(int)
+            display_df['protein'] = display_df['protein'].round(1)
+            display_df['fat'] = display_df['fat'].round(1)
+            display_df['carbs'] = display_df['carbs'].round(1)
+            display_df['fiber'] = display_df['fiber'].round(1)
+            
             # Move the Select to far right, don't include Delete
             display_df.insert(len(display_df.columns), "✅ Select for Recipe", False)
             
@@ -291,8 +305,16 @@ with tab_history:
             def style_bg(row, c_idx):
                 return [f'background-color: {row_colors[c_idx]}'] * len(row)
 
-            # Need to pass color_idx in directly, so we use a lambda or freeze it
+            # Style background and numbers
             styled_df = display_df.style.apply(style_bg, c_idx=color_idx, axis=1)
+            
+            # Provide format strings to explicitly show 1 decimal place even for .0
+            styled_df = styled_df.format({
+                'protein': "{:.1f}",
+                'fat': "{:.1f}",
+                'carbs': "{:.1f}",
+                'fiber': "{:.1f}"
+            })
             
             # Show editable dataframe so we can catch selections
             edited_history = st.data_editor(
