@@ -21,7 +21,7 @@ def calculate_totals(df):
 # --- UI Setup ---
 st.title("🍏 Macro Tracker")
 
-tab_log, tab_dash, tab_recipes = st.tabs(["📝 Daily Log", "📊 Dashboard", "🍳 Recipes"])
+tab_log, tab_dash, tab_history, tab_recipes = st.tabs(["📝 Daily Log", "📊 Dashboard", "📜 History", "🍳 Recipes"])
 
 # ==========================================
 # TAB 1: DAILY LOG
@@ -171,41 +171,41 @@ with tab_dash:
             row_heights=[0.8, 0.2]
         )
 
-        # 1. Protein (Stacked Area - Teal) #028391
+        # 1. Protein (Stacked Area - Gold) #F1A512
         fig.add_trace(
             go.Scatter(x=daily_summary['date'], y=p_cal, 
                        name="Protein", mode='lines', stackgroup='one', line_shape='spline',
-                       fillcolor='#028391', line=dict(color='#028391', width=2),
+                       fillcolor='#F1A512', line=dict(color='#F1A512', width=2),
                        customdata=daily_summary['protein'],
                        hovertemplate='Protein: %{customdata:.1f}g (~%{y:.0f} kcal)<extra></extra>'),
             row=1, col=1
         )
         
-        # 2. Fat (Stacked Area - Cream) #F6DCAC
-        fig.add_trace(
-            go.Scatter(x=daily_summary['date'], y=f_cal, 
-                       name="Fat", mode='lines', stackgroup='one', line_shape='spline',
-                       fillcolor='#F6DCAC', line=dict(color='#F6DCAC', width=2),
-                       customdata=daily_summary['fat'],
-                       hovertemplate='Fat: %{customdata:.1f}g (~%{y:.0f} kcal)<extra></extra>'),
-            row=1, col=1
-        )
-        
-        # 3. Carbs (Stacked Area - Peach) #FAA968
+        # 2. Carbs (Stacked Area - Red/Orange) #DD4111
         fig.add_trace(
             go.Scatter(x=daily_summary['date'], y=c_cal, 
                        name="Carbs", mode='lines', stackgroup='one', line_shape='spline',
-                       fillcolor='#FAA968', line=dict(color='#FAA968', width=2),
+                       fillcolor='#DD4111', line=dict(color='#DD4111', width=2),
                        customdata=daily_summary['carbs'],
                        hovertemplate='Carbs: %{customdata:.1f}g (~%{y:.0f} kcal)<extra></extra>'),
             row=1, col=1
         )
+        
+        # 3. Fat (Stacked Area - Maroon) #8C0027
+        fig.add_trace(
+            go.Scatter(x=daily_summary['date'], y=f_cal, 
+                       name="Fat", mode='lines', stackgroup='one', line_shape='spline',
+                       fillcolor='#8C0027', line=dict(color='#8C0027', width=2),
+                       customdata=daily_summary['fat'],
+                       hovertemplate='Fat: %{customdata:.1f}g (~%{y:.0f} kcal)<extra></extra>'),
+            row=1, col=1
+        )
 
-        # 4. Fiber - smoothed filled area chart descending #F85525
+        # 4. Fiber - smoothed filled area chart descending (Teal) #2BAF90
         fig.add_trace(
             go.Scatter(x=daily_summary['date'], y=daily_summary['fiber'], 
                        name="Fiber", mode='lines', fill='tozeroy', line_shape='spline',
-                       fillcolor='rgba(248, 85, 37, 0.4)', line=dict(color='#F85525', width=2),
+                       fillcolor='rgba(43, 175, 144, 0.4)', line=dict(color='#2BAF90', width=2),
                        customdata=daily_summary['fiber'],
                        hovertemplate='Fiber: %{customdata:.1f}g<extra></extra>'),
             row=2, col=1
@@ -250,7 +250,78 @@ with tab_dash:
         )
 
 # ==========================================
-# TAB 3: RECIPES
+# TAB 3: HISTORY
+# ==========================================
+with tab_history:
+    st.header("📜 Log History")
+    
+    # Load recent logs
+    history_logs = db.get_recent_logs(90) # Load up to 90 days for history
+
+    if history_logs.empty:
+        st.info("No history available to display yet.")
+    else:
+        # Sort history to be most recent first
+        history_logs = history_logs.sort_values(by='date', ascending=False)
+        
+        # Colors for daily backgrounds: #A1D4B1, #F1A512, #DD4111, #8C0027
+        # Converted to rgba for Streamlit background styling (transparency 0.2)
+        row_colors = [
+            'rgba(161, 212, 177, 0.2)',
+            'rgba(241, 165, 18, 0.2)',
+            'rgba(221, 65, 17, 0.2)',
+            'rgba(140, 0, 39, 0.2)'
+        ]
+        
+        # Group by date to keep days together
+        grouped = history_logs.groupby('date', sort=False)
+        
+        # Counter to cycle colors
+        color_idx = 0
+        
+        for log_date, group_df in grouped:
+            st.subheader(f"{log_date}")
+            
+            # Prepare dataframe for display
+            display_df = group_df.copy()
+            # Move the Select to far right, don't include Delete
+            display_df.insert(len(display_df.columns), "✅ Select for Recipe", False)
+            
+            # Styling function for the backgrounds
+            def style_bg(row, c_idx):
+                return [f'background-color: {row_colors[c_idx]}'] * len(row)
+
+            # Need to pass color_idx in directly, so we use a lambda or freeze it
+            styled_df = display_df.style.apply(style_bg, c_idx=color_idx, axis=1)
+            
+            # Show editable dataframe so we can catch selections
+            edited_history = st.data_editor(
+                styled_df,
+                hide_index=True,
+                column_config={
+                    "✅ Select for Recipe": st.column_config.CheckboxColumn(required=True),
+                    "id": None, # Hide ID
+                    "date": None, # Date is in subheader
+                },
+                disabled=["food_name", "calories", "protein", "fat", "carbs", "fiber"],
+                use_container_width=True,
+                key=f"history_table_{log_date}"
+            )
+            
+            # Check for selections to send to recipe builder
+            selected_items = edited_history[edited_history["✅ Select for Recipe"] == True]
+            if not selected_items.empty:
+                if st.button(f"➕ Create Recipe from {log_date} Selections", type="primary", key=f"hist_btn_{log_date}"):
+                    current = st.session_state.get("recipe_builder_items", [])
+                    st.session_state["recipe_builder_items"] = current + selected_items.drop(columns=["✅ Select for Recipe"]).to_dict('records')
+                    st.success("Items ready! Go to the 'Recipes' tab to name and save your dish.")
+            
+            # Increment color index
+            color_idx = (color_idx + 1) % len(row_colors)
+            st.write("") # Spacer
+
+# ==========================================
+# TAB 4: RECIPES
 # ==========================================
 with tab_recipes:
     st.header("Batch Cooking & Recipes")
